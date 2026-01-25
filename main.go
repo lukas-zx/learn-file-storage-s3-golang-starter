@@ -31,58 +31,31 @@ type thumbnail struct {
 
 var videoThumbnails = map[uuid.UUID]thumbnail{}
 
+func loadEnv(name string) string {
+	env := os.Getenv(name)
+	if env == "" {
+		log.Fatalf("%s environment variable is not set", name)
+	}
+	return env
+}
+
 func main() {
 	godotenv.Load(".env")
 
-	pathToDB := os.Getenv("DB_PATH")
-	if pathToDB == "" {
-		log.Fatal("DB_URL must be set")
-	}
-
+	pathToDB := loadEnv("DB_PATH")
 	db, err := database.NewClient(pathToDB)
 	if err != nil {
 		log.Fatalf("Couldn't connect to database: %v", err)
 	}
 
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		log.Fatal("JWT_SECRET environment variable is not set")
-	}
-
-	platform := os.Getenv("PLATFORM")
-	if platform == "" {
-		log.Fatal("PLATFORM environment variable is not set")
-	}
-
-	filepathRoot := os.Getenv("FILEPATH_ROOT")
-	if filepathRoot == "" {
-		log.Fatal("FILEPATH_ROOT environment variable is not set")
-	}
-
-	assetsRoot := os.Getenv("ASSETS_ROOT")
-	if assetsRoot == "" {
-		log.Fatal("ASSETS_ROOT environment variable is not set")
-	}
-
-	s3Bucket := os.Getenv("S3_BUCKET")
-	if s3Bucket == "" {
-		log.Fatal("S3_BUCKET environment variable is not set")
-	}
-
-	s3Region := os.Getenv("S3_REGION")
-	if s3Region == "" {
-		log.Fatal("S3_REGION environment variable is not set")
-	}
-
-	s3CfDistribution := os.Getenv("S3_CF_DISTRO")
-	if s3CfDistribution == "" {
-		log.Fatal("S3_CF_DISTRO environment variable is not set")
-	}
-
-	port := os.Getenv("PORT")
-	if port == "" {
-		log.Fatal("PORT environment variable is not set")
-	}
+	jwtSecret := loadEnv("JWT_SECRET")
+	platform := loadEnv("PLATFORM")
+	filepathRoot := loadEnv("FILEPATH_ROOT")
+	assetsRoot := loadEnv("ASSETS_ROOT")
+	s3Bucket := loadEnv("S3_BUCKET")
+	s3Region := loadEnv("S3_REGION")
+	s3CfDistribution := loadEnv("S3_CF_DISTRO")
+	port := loadEnv("PORT")
 
 	cfg := apiConfig{
 		db:               db,
