@@ -58,7 +58,7 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 	token, err := jwt.ParseWithClaims(
 		tokenString,
 		&claimsStruct,
-		func(token *jwt.Token) (interface{}, error) { return []byte(tokenSecret), nil },
+		func(token *jwt.Token) (any, error) { return []byte(tokenSecret), nil },
 	)
 	if err != nil {
 		return uuid.Nil, err
