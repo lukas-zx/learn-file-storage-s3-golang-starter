@@ -19,6 +19,23 @@ import (
 	"github.com/google/uuid"
 )
 
+func processVideoForFastStart(filePath string) (string, error) {
+	outputFilePath := fmt.Sprintf("%s.processing", filePath)
+	cmd := exec.Command(
+		"ffmpeg",
+		"-i", filePath,
+		"-c", "copy",
+		"-movflags", "faststart",
+		"-f", "mp4",
+		outputFilePath,
+	)
+
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+	return outputFilePath, nil
+}
+
 func getVideoAspectRatio(filePath string) (string, error) {
 	cmd := exec.Command(
 		"ffprobe",
@@ -161,9 +178,6 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	fmt.Println("aspectRatio")
-	fmt.Println(aspectRatio)
-
 	switch aspectRatio {
 	case "16:9":
 		fileName = fmt.Sprintf("landscape/%s", fileName)
@@ -173,10 +187,26 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		fileName = fmt.Sprintf("other/%s", fileName)
 	}
 
+	processedPath, err := processVideoForFastStart(tempFile.Name())
+	if err != nil {
+		log.Println(err)
+		respondWithError(w, http.StatusInternalServerError, "Unable to process video for fast start", err)
+		return
+	}
+	defer os.Remove(processedPath)
+
+	processedFile, err := os.Open(processedPath)
+	if err != nil {
+		log.Println(err)
+		respondWithError(w, http.StatusInternalServerError, "Unable to process video for fast start", err)
+		return
+	}
+	defer processedFile.Close()
+
 	cfg.s3Client.PutObject(r.Context(), &s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
 		Key:         &fileName,
-		Body:        tempFile,
+		Body:        processedFile,
 		ContentType: &mediaType,
 	})
 
