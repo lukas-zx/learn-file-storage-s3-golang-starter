@@ -1,20 +1,65 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"mime"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
 )
+
+func getVideoAspectRatio(filePath string) (string, error) {
+	cmd := exec.Command(
+		"ffprobe",
+		"-v", "error",
+		"-print_format", "json",
+		"-show_streams",
+		filePath,
+	)
+
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Run()
+
+	var data struct {
+		Streams []struct {
+			CodecType string `json:"codec_type"`
+			Width     int    `json:"width"`
+			Height    int    `json:"height"`
+		} `json:"streams"`
+	}
+
+	json.Unmarshal(out.Bytes(), &data)
+
+	for _, s := range data.Streams {
+		if s.CodecType == "video" && s.Width > 0 && s.Height > 0 {
+
+			ratio := (s.Width * 1000) / s.Height // INT division
+
+			switch {
+			case ratio >= 1700 && ratio <= 1850:
+				return "16:9", nil
+			case ratio >= 520 && ratio <= 600:
+				return "9:16", nil
+			default:
+				return "other", nil
+			}
+		}
+	}
+
+	return "other", nil
+}
 
 func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request) {
 	// parameter parsing
@@ -53,8 +98,8 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	const maxMemory = 1 << 30
 	r.Body = http.MaxBytesReader(w, r.Body, maxMemory)
 	if err := r.ParseMultipartForm(maxMemory); err != nil {
-			respondWithError(w, http.StatusBadRequest, "Upload too large or invalid multipart form", err)
-			return
+		respondWithError(w, http.StatusBadRequest, "Upload too large or invalid multipart form", err)
+		return
 	}
 
 	// "video" should match the HTML form input name
@@ -109,10 +154,29 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	fileExtension := strings.Split(mediaType, "/")[1]
 	fileName = fmt.Sprintf("%s.%s", fileName, fileExtension)
 
+	aspectRatio, err := getVideoAspectRatio(tempFile.Name())
+	if err != nil {
+		log.Println(err)
+		respondWithError(w, http.StatusInternalServerError, "Unable to get file aspect ratio", err)
+		return
+	}
+
+	fmt.Println("aspectRatio")
+	fmt.Println(aspectRatio)
+
+	switch aspectRatio {
+	case "16:9":
+		fileName = fmt.Sprintf("landscape/%s", fileName)
+	case "9:16":
+		fileName = fmt.Sprintf("portrait/%s", fileName)
+	default:
+		fileName = fmt.Sprintf("other/%s", fileName)
+	}
+
 	cfg.s3Client.PutObject(r.Context(), &s3.PutObjectInput{
-		Bucket: &cfg.s3Bucket,
-		Key: &fileName,
-		Body: tempFile,
+		Bucket:      &cfg.s3Bucket,
+		Key:         &fileName,
+		Body:        tempFile,
 		ContentType: &mediaType,
 	})
 
